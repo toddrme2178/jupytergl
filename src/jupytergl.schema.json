@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "title": "Jupyter Notebook WebGL format",
+  "description": "",
+  "type": ["array"],
+  "items": {"$ref": "#/definitions/chunk"},
+
+  "definitions": {
+    "chunk": {
+      "type": "array",
+      "description": "A chunk of instructions",
+
+      "items": {"$ref": "#/definitions/instruction"}
+    },
+
+    "instruction": {
+      "type": ["object"],
+      "description": "An instruction",
+      "required": ["type", "op", "args"],
+
+      "oneOf": [
+        { "$ref": "#/definitions/execInstruction" },
+        { "$ref": "#/definitions/queryInstruction" },
+      ]
+    },
+
+    "execInstruction": {
+      "properties": {
+        "type": {"enum": ["exec"]},
+        "op": {
+          "type": "string"
+        },
+        "args": {
+          "type": "array",
+          "items": {"$ref": "#/definitions/arg"}
+        }
+      }
+    },
+
+    "queryInstruction": {
+      "properties": {
+        "type": {"enum": ["query"]},
+        "op": {
+          "type": "string"
+        },
+        "args": {
+          "type": "array",
+          "items": {"$ref": "#/definitions/arg"}
+        }
+      }
+    },
+
+    "arg": {
+      "type": ["string", "number", "array", "null", "object"],
+      "description": "Argument for an instruction"
+    }
+  }
+}
