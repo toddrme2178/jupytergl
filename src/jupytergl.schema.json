@@ -2,10 +2,84 @@
   "$schema": "http://json-schema.org/draft-04/schema#",
   "title": "Jupyter Notebook WebGL format",
   "description": "",
-  "type": ["array"],
-  "items": {"$ref": "#/definitions/chunk"},
+  "type": ["object"],
+  "required": ["type"],
+  "properties": {
+    "type": {"enum": ["exec", "query", "getConstants", "getMethods"]}
+  },
+  "oneOf": [
+    { "$ref": "#/definitions/execMessage" },
+    { "$ref": "#/definitions/queryMessage" },
+    { "$ref": "#/definitions/inspectMessage" }
+  ],
 
   "definitions": {
+    "execMessage": {
+      "type": "object",
+      "required": ["instructions"],
+      "properties": {
+        "type": {"enum": ["exec"]},
+        "instructions": {
+          "$ref": "#/definitions/chunk"
+        }
+      }
+    },
+    "queryMessage": {
+      "type": "object",
+      "required": ["instructions"],
+      "properties": {
+        "type": {"enum": ["query"]},
+        "instructions": {
+          "$ref": "#/definitions/chunk"
+        }
+      }
+    },
+    "inspectMessage": {
+      "type": "object",
+      "required": ["target"],
+      "properties": {
+        "type": {"enum": ["getConstants", "getMethods"]},
+        "target": {"enum": ["context"]}
+      }
+    },
+    "constantsReply": {
+      "type": "object",
+      "properties": {
+        "type": {"enum": ["constantsReply"]},
+        "target": {"enum": ["context"]},
+        "data": {
+          "type": "object",
+          "patternProperties": {
+            "^[a-zA-Z0-9]([a-zA-Z0-9_]*[a-zA-Z0-9]|)$": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    },
+    "methodsReply": {
+      "type": "object",
+      "properties": {
+        "type": {"enum": ["methodsReply"]},
+        "target": {"enum": ["context"]},
+        "data": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9]([a-zA-Z0-9_]*[a-zA-Z0-9]|)$"
+          }
+        }
+      }
+    },
+    "queryReply": {
+      "type": "object",
+      "properties": {
+        "type": {"enum": ["queryReply"]},
+        "data": {
+        }
+      }
+    },
+
     "chunk": {
       "type": "array",
       "description": "A chunk of instructions",
@@ -20,7 +94,7 @@
 
       "oneOf": [
         { "$ref": "#/definitions/execInstruction" },
-        { "$ref": "#/definitions/queryInstruction" },
+        { "$ref": "#/definitions/queryInstruction" }
       ]
     },
 
@@ -52,7 +126,7 @@
 
     "arg": {
       "type": ["string", "number", "array", "null", "object"],
-      "description": "Argument for an instruction"
+      "description": "Argument for an instruction. The values \"keyX\" and \"bufferY\", have special meanings. `keyX` is a reference to a variable key returned by a previous query (e.g. buffer reference) with X being an ID of one or more characters. \"bufferY\" means to get the variable value from a binary buffer, where Y is the data type (e.g. uint8) of the binary data. Buffers are consumed in the order they are referenced, so clients should ensure that the number of buffer args equals exactly the number of buffers."
     }
   }
 }

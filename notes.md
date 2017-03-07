@@ -42,3 +42,21 @@ Access to shaders (and maybe geometry) stored in the DOM should be specced, wher
 ### Interface
 
 Simple query/exec interface, where query returns the value from all / the last call(s).
+
+
+
+## Program flow
+
+### Static output (no kernel)
+
+An output should contain: Buffers + shaders + WebGL instructions. This can be stored when live.
+
+### Widget (kernel)
+
+Kernel -> Javascript : instructions
+[Kernel -> Javascript : buffers]
+[Kernel -> Javascript : further init]
+[Javascript -> Kernel : request instructions]
+    [Kernel -> Javascript : buffers]
+    [Kernel -> Javascript : instructions]
+
