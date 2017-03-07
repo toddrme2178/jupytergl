@@ -1,0 +1,13 @@
+{
+  "name": "jupytergl",
+  "version": "0.0.1",
+  "description": "GL",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "vidartf",
+  "license": "BSD-3-Clause",
+  "dependencies": {
+    "@jupyterlab/services": "^0.39.1"
+  }
+}
