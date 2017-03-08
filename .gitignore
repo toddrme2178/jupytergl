@@ -83,3 +83,12 @@ $RECYCLE.BIN/
 
 # Windows shortcuts
 *.lnk
+
+
+# Python
+=============================
+
+*.egg-info
+__pycache__
+*.pyc
+
