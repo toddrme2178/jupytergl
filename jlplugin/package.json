@@ -1,0 +1,47 @@
+{
+  "name": "@jupyterlab/jupytergl",
+  "version": "0.0.1",
+  "description": "The JupyterLab extension providing JupyterGL.",
+  "main": "lib/index.js",
+  "typings": "lib/index.d.ts",
+  "dependencies": {
+    "@jupyterlab/services": "^0.39.1",
+    "@phosphor/coreutils": "^0.1.4",
+    "@phosphor/disposable": "^0.1.1",
+    "jupytergl": "file:../",
+    "jupyterlab": "^0.17.2"
+  },
+  "devDependencies": {
+    "@jupyterlab/extension-builder": "^0.11.0",
+    "rimraf": "^2.4.2",
+    "typescript": "~2.2.1"
+  },
+  "scripts": {
+    "clean": "rimraf lib && rimraf jupytergl_jl/static",
+    "build:src": "tsc --project src",
+    "build:extension": "node scripts/buildExtension.js",
+    "update": "rimraf node_modules/jupytergl && npm install && npm run build",
+    "build": "npm run build:src && npm run build:extension"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vidartf/jupytergl"
+  },
+  "keywords": [
+    "jupyter",
+    "jupyterlab",
+    "services",
+    "notebook"
+  ],
+  "files": [
+    "lib/*.js",
+    "lib/*.d.ts",
+    "dist/*.js"
+  ],
+  "author": "Project Jupyter",
+  "license": "BSD-3-Clause",
+  "bugs": {
+    "url": "https://github.com/vidartf/jupytergl/issues"
+  },
+  "homepage": "https://github.com/vidartf/jupytergl"
+}
