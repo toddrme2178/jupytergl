@@ -8,6 +8,14 @@
   "author": "vidartf",
   "license": "BSD-3-Clause",
   "dependencies": {
-    "@jupyterlab/services": "^0.39.1"
+    "@jupyterlab/services": "^0.39.1",
+    "typescript": "~2.2.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vidartf/jupytergl"
+  },
+  "bugs": {
+    "url": "https://github.com/vidartf/jupytergl/issues"
   }
 }

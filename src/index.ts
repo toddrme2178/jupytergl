@@ -103,10 +103,10 @@ class Context {
       let instructions = data.instructions;
       this.messageBufferContext(message.buffers, () => {
         let result = this.queryMessage(this.context, instructions);
-        let reply: IQueryReply = {
+        let reply = {
           type: 'queryReply',
           data: result
-        };
+        } as IQueryReply;
         comm.open();
         comm.send(reply)
         comm.close();
@@ -120,14 +120,14 @@ class Context {
             type: 'constantsReply',
             target: data.target,
             data: constants
-          }
+          } as IConstantsReply;
         } else {
           let methods = availableMethods(this.context);
           reply = {
             type: 'methodsReply',
             target: data.target,
             data: methods
-          }
+          } as IMethodsReply;
         }
         comm.open();
         comm.send(reply)

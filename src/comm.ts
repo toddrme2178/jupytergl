@@ -1,14 +1,14 @@
 
 import {
-  ContentsManager, Kernel, Session, KernelMessage
+  Kernel, KernelMessage
 } from '@jupyterlab/services';
 
 import {
-  JSONArray, JSONValue, JSONPrimitive, JSONObject
+  JSONValue, JSONObject
 } from './json';
 
 import {
-  execMessage, queryMessage, IInstruction
+  IInstruction
 } from '.'
 
 
