@@ -92,3 +92,14 @@ $RECYCLE.BIN/
 __pycache__
 *.pyc
 
+
+# Build artifacts
+============================
+jlplugin/jupytergl_jl/static
+jlplugin/lib
+lib
+
+
+# IDE files
+==============================
+.vscode
