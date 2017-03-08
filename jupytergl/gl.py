@@ -1,4 +1,3 @@
-
 from contextlib import contextmanager
 from ipykernel.comm import Comm
 
@@ -11,13 +10,19 @@ def _is_json_primitive(value):
 
 
 class Instruction:
-    def __init__(self, name, args=None):
+    def __init__(self, name, args=None, gl=None):
         self.name = name
+        self.gl = gl
         if args is not None:
             self.args = args
 
     def __call__(self, *args):
         self.args = args
+        if self.gl is not None:
+            return self.gl.query(self.name, args)
+
+    def _serialize(self):
+        return dict(op=self.name, args=self.args)
 
 
 class RemoteContext:
@@ -27,14 +32,6 @@ class RemoteContext:
         self._methods = methods
         self._instructions = []
 
-    def __dir__(self):
-        d = super(JupyterGL, self).__dir__()
-        if self._constants:
-            d.extend(self._constants)
-        if self._methods:
-            d.extend(self._methods)
-        return d
-
     def __getattr__(self, name):
         if self._constants and name in self._constants:
             return self._constants[name]
@@ -43,7 +40,7 @@ class RemoteContext:
             self._instructions.append(method)
             return method
         else:
-            raise AttributeError()
+            raise AttributeError(name)
 
     def __iter__(self):
         for instruction in self._instructions:
@@ -56,40 +53,51 @@ class RemoteContext:
 class JupyterGL:
     def __init__(self, **kwargs):
         self._context = None
-        self.open()
+        self._comm = None
+        self._open()
         self._constants = None
         self._methods = None
+        self._request_constants()
+        self._request_methods()
 
     def __del__(self):
-        self.close()
+        self._close()
 
-    def open(self):
-        """Open a comm to the frontend if one isn't already open."""
-        if self.comm is None:
-            self.comm = Comm(target_name='jupytergl')
-            self.comm.on_msg(self._handle_msg)
+    def __dir__(self):
+        d = list(self.__dict__().keys())
+        if self._constants:
+            d.extend(self._constants)
+        if self._methods:
+            d.extend(self._methods)
+        return d
 
-    def close(self):
-        """Close the underlying comm."""
-        if self.comm is not None:
-            self.comm.close()
-            self.comm = None
+    def _open(self):
+        """Open a _comm to the frontend if one isn't already open."""
+        if self._comm is None:
+            self._comm = Comm(target_name='jupytergl')
+            self._comm.on_msg(self._handle_msg)
+
+    def _close(self):
+        """Close the underlying _comm."""
+        if self._comm is not None:
+            self._comm.close()
+            self._comm = None
 
     @contextmanager
-    def context(self, mode='exec'):
+    def chunk(self, mode='exec'):
         outermost = self._context is None
         if outermost:
             self._context = RemoteContext(mode, self._constants, self._methods)
-        yield self._context
+        yield self
         if outermost:
-            self._send_instructions(self._context)
+            self._send_instructions(self._context, mode)
             self._context = None
             if mode == 'query':
                 raise NotImplementedError()
 
     def exec_(self, name, args):
         if self.context is None:
-            self._send_instructions([Instruction(name, args)])
+            self._send_instructions([Instruction(name, args)], 'exec')
         else:
             getattr(self._context, name)(*args)
 
@@ -98,9 +106,21 @@ class JupyterGL:
             raise RuntimeError(
                 'Cannot directly query a JupyterGL method within '
                 'an active context')
-        self._send_instructions([Instruction(name, args)])
+        self._send_instructions([Instruction(name, args)], 'query')
         # TODO: Await response to return
         raise NotImplementedError()
+
+    def __getattr__(self, name):
+        if self._constants and name in self._constants:
+            return self._constants[name]
+        elif self._methods and name in self._methods:
+            if self._context is None:
+                method = Instruction(name, gl=self)
+                return method
+            else:
+                return getattr(self._context, name)
+        else:
+            raise AttributeError(name)
 
     def _separate_buffers(self, instructions):
         buffers = []
@@ -111,15 +131,15 @@ class JupyterGL:
                 if _is_json_primitive(a):
                     processed_args.append(a)
                 elif isinstance(a, (np.ndarray, np.generic)):
-                    processed_args.append('buffer%d' % len(buffers))
+                    processed_args.append('buffer%s' % a.dtype)
                     buffers.append(memoryview(a))
                 elif isinstance(a, (memoryview, bytes, bytearray)):
-                    processed_args.append('buffer%d' % len(buffers))
+                    processed_args.append('buffer%s' % a.dtype)
                     buffers.append(a)
                 else:
                     raise TypeError(
                         'Invalid argument to method %s: %r', i.name, a)
-            processed_instructions.append(Instruction(i.name, processed_args))
+            processed_instructions.append(Instruction(i.name, processed_args)._serialize())
         return processed_instructions, buffers
 
     def _request_constants(self):
@@ -131,6 +151,8 @@ class JupyterGL:
         self._send(msg)
 
     def _send_instructions(self, instructions, mode):
+        if not instructions:
+            return
         instructions, buffers = self._separate_buffers(instructions)
         msg = dict(
             type=mode,
@@ -140,17 +162,20 @@ class JupyterGL:
 
     def _send(self, msg, buffers=None):
         """Sends a message to the model in the front-end."""
-        if self.comm is not None and self.comm.kernel is not None:
-            self.comm.send(data=msg, buffers=buffers)
+        if self._comm is not None and self._comm.kernel is not None:
+            self._comm.send(data=msg, buffers=buffers)
 
-    def _handle_msg(self, msg):
+    def _handle_msg(self, message):
         """Called when a msg is received from the front-end"""
-        if msg.type == 'constantsReply':
-            self._constants = msg.data
-        elif msg.type == 'methodsReply':
-            self._methods = msg.data
-        elif msg.type == 'queryReply':
+        msg = message['content']['data']
+        if 'type' not in msg:
+            raise ValueError('Invalid message received: %s', message)
+        if msg['type'] == 'constantsReply':
+            self._constants = msg['data']
+        elif msg['type'] == 'methodsReply':
+            self._methods = msg['data']
+        elif msg['type'] == 'queryReply':
             # Signal query reply to anything that is waiting for it!
             raise NotImplementedError()
         else:
-            raise ValueError('Invalid message received: %s', msg)
+            raise ValueError('Invalid message received: %s', message)

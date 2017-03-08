@@ -13,7 +13,12 @@ import {
 } from './comm';
 
 
-export
+// Re-export:
+export {
+  startCommListen
+} from './comm';
+
+
 function availableMethods(gl: WebGLRenderingContext): string[] {
   let ret: string[] = [];
   for (let key in gl) {
@@ -27,14 +32,13 @@ function availableMethods(gl: WebGLRenderingContext): string[] {
 
 const nonConstKeys = ['drawingBufferWidth', 'drawingBufferHeight'];
 
-export
 function availableConstants(gl: WebGLRenderingContext): {[key: string]: number} {
   let ret: {[key: string]: number} = {};
   for (let key in gl) {
     if (nonConstKeys.indexOf(key) !== -1) {
       continue;
     } else if (typeof (gl as any)[key] === 'number') {
-      ret[key] == (gl as any)[key];
+      ret[key] = (gl as any)[key];
     }
   }
   return ret;
@@ -72,13 +76,22 @@ class Context {
   /**
    *
    */
-  constructor(canvas: HTMLCanvasElement) {
-    let context = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-    if (context === null) {
-      throw TypeError('Could not get WebGL context for canvas!');
-    }
-    this.context = context;
+  constructor(parentNode: HTMLElement) {
+    this.parentNode = parentNode;
     this.variables = {};
+  }
+
+  get context(): WebGLRenderingContext {
+    if (this._context === null) {
+      let canvas = document.createElement('canvas');
+      this.parentNode.appendChild(canvas);
+      let context = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+      if (context === null) {
+        throw TypeError('Could not get WebGL context for canvas!');
+      }
+      this._context = context;
+    }
+    return this._context;
   }
 
 
@@ -107,9 +120,7 @@ class Context {
           type: 'queryReply',
           data: result
         } as IQueryReply;
-        comm.open();
         comm.send(reply)
-        comm.close();
       });
     } else if (data.type === 'getConstants' || data.type === 'getMethods') {
       if (data.target === 'context') {
@@ -129,9 +140,7 @@ class Context {
             data: methods
           } as IMethodsReply;
         }
-        comm.open();
         comm.send(reply)
-        comm.close();
       }
     }
   }
@@ -204,11 +213,13 @@ class Context {
     return key;
   }
 
-  context: WebGLRenderingContext;
-
   protected variables: {[key: string]: any};
 
   protected variableIdGen = 1;
 
+  protected parentNode: HTMLElement;
+
   private _currentBuffers: Buffer[] | null = null;
+
+  private _context: WebGLRenderingContext | null = null;
 }
