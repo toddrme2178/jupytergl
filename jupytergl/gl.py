@@ -1,7 +1,8 @@
 from contextlib import contextmanager
-from ipykernel.comm import Comm
 
 import numpy as np
+
+from .comm import QueryableComm
 
 
 def _is_json_primitive(value):
@@ -26,8 +27,7 @@ class Instruction:
 
 
 class RemoteContext:
-    def __init__(self, mode, constants, methods):
-        self._mode = mode
+    def __init__(self, constants, methods):
         self._constants = constants
         self._methods = methods
         self._instructions = []
@@ -51,9 +51,10 @@ class RemoteContext:
 
 
 class JupyterGL:
-    def __init__(self, **kwargs):
+    def __init__(self, query_timeout=10):
         self._context = None
         self._comm = None
+        self._query_timeout = query_timeout
         self._open()
         self._constants = None
         self._methods = None
@@ -64,7 +65,7 @@ class JupyterGL:
         self._close()
 
     def __dir__(self):
-        d = list(self.__dict__().keys())
+        d = list(self.__dict__.keys())
         if self._constants:
             d.extend(self._constants)
         if self._methods:
@@ -74,8 +75,9 @@ class JupyterGL:
     def _open(self):
         """Open a _comm to the frontend if one isn't already open."""
         if self._comm is None:
-            self._comm = Comm(target_name='jupytergl')
+            self._comm = QueryableComm(target_name='jupytergl')
             self._comm.on_msg(self._handle_msg)
+            self._comm.kernel
 
     def _close(self):
         """Close the underlying _comm."""
@@ -84,16 +86,14 @@ class JupyterGL:
             self._comm = None
 
     @contextmanager
-    def chunk(self, mode='exec'):
+    def chunk(self):
         outermost = self._context is None
         if outermost:
-            self._context = RemoteContext(mode, self._constants, self._methods)
+            self._context = RemoteContext(self._constants, self._methods)
         yield self
         if outermost:
-            self._send_instructions(self._context, mode)
+            self._send_instructions(self._context, 'exec')
             self._context = None
-            if mode == 'query':
-                raise NotImplementedError()
 
     def exec_(self, name, args):
         if self.context is None:
@@ -107,8 +107,7 @@ class JupyterGL:
                 'Cannot directly query a JupyterGL method within '
                 'an active context')
         self._send_instructions([Instruction(name, args)], 'query')
-        # TODO: Await response to return
-        raise NotImplementedError()
+        return self._comm.await_query_reply(timeout=self._query_timeout)
 
     def __getattr__(self, name):
         if self._constants and name in self._constants:
@@ -175,7 +174,7 @@ class JupyterGL:
         elif msg['type'] == 'methodsReply':
             self._methods = msg['data']
         elif msg['type'] == 'queryReply':
-            # Signal query reply to anything that is waiting for it!
-            raise NotImplementedError()
+            # This should have been handled in QueryableComm!
+            raise ValueError(msg)
         else:
             raise ValueError('Invalid message received: %s', message)

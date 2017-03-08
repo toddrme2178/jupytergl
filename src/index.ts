@@ -202,7 +202,7 @@ class Context {
   protected queryInstruction(gl: WebGLRenderingContext, instruction: IInstruction): JSONValue {
     let result = (gl as any)[instruction.op](...this.expandArgs(instruction.args));
     if (result === undefined) {
-      throw TypeError('Result of query was undefined!');
+      result = null;
     }
     if (result === null || typeof result === 'string' || typeof result === 'number' || typeof result === 'boolean') {
       return result as JSONPrimitive;
