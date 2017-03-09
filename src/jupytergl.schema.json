@@ -79,6 +79,20 @@
         }
       }
     },
+    "queryError": {
+      "type": "object",
+      "properties": {
+        "type": {"enum": ["queryError"]},
+        "data": {
+          "type": "object",
+          "properties": {
+            "message": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
 
     "chunk": {
       "type": "array",

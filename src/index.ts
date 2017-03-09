@@ -9,7 +9,7 @@ import {
 } from './json';
 
 import {
-  IMessage, IReply, IConstantsReply, IMethodsReply, IQueryReply
+  IMessage, IReply, IConstantsReply, IMethodsReply, IQueryReply, IQueryError
 } from './comm';
 
 
@@ -115,11 +115,26 @@ class Context {
     } else if (data.type === 'query') {
       let instructions = data.instructions;
       this.messageBufferContext(message.buffers, () => {
-        let result = this.queryMessage(this.context, instructions);
-        let reply = {
-          type: 'queryReply',
-          data: result
-        } as IQueryReply;
+        let result : any;
+        let reply: IQueryReply | IQueryError;
+        try {
+          result = this.queryMessage(this.context, instructions);
+          reply = {
+            type: 'queryReply',
+            data: result
+          };
+        } catch (e) {
+          if (e instanceof TypeError) {
+            reply = {
+              type: 'queryError',
+              data: {
+                message: e.message
+              }
+            }
+          } else {
+            throw e;
+          }
+        }
         comm.send(reply)
       });
     } else if (data.type === 'getConstants' || data.type === 'getMethods') {

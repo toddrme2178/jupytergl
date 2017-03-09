@@ -100,6 +100,14 @@ interface IQueryReply extends JSONObject {
 }
 
 export
+interface IQueryError extends JSONObject {
+  type: 'queryError';
+  data: {
+    message: string;
+  };
+}
+
+export
 type IInspectReply = IConstantsReply | IMethodsReply;
 
 export
