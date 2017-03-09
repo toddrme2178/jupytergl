@@ -188,8 +188,10 @@ class Context {
           }
           let view = new bufferViewMap[bufType](raw);
           ret.push(view);
-        } else {
+        } else if (arg.slice(0, 3) === 'key') {
           ret.push(this.variables[arg]);
+        } else {
+          ret.push(arg);
         }
       } else {
         ret.push(arg);
