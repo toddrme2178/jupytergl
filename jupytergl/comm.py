@@ -1,6 +1,6 @@
 import asyncio
 from ipykernel.comm import Comm
-from queue import Queue
+from queue import Queue, Empty
 
 
 class QueryableComm(Comm):
@@ -13,6 +13,17 @@ class QueryableComm(Comm):
         future = asyncio.Future()
         self.waiting_queries.put_nowait(future)
         return future
+
+    def clear_queue(self):
+        n_cleared = 0
+        try:
+            while True:
+                query = self.waiting_queries.get_nowait()
+                n_cleared += 1
+                query.cancel()
+        except Empty:
+            pass
+        return n_cleared
 
     def handle_msg(self, message):
         msg = message['content'].get('data')
