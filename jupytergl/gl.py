@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from asyncio import Future, gather, ensure_future
 
 import numpy as np
 
@@ -54,12 +55,13 @@ class JupyterGL:
     def __init__(self, query_timeout=10):
         self._context = None
         self._comm = None
-        self._query_timeout = query_timeout
         self._open()
         self._constants = None
         self._methods = None
         self._request_constants()
         self._request_methods()
+        self._prev = Future()
+        self._prev.set_result(None)
 
     def __del__(self):
         self._close()
@@ -107,7 +109,7 @@ class JupyterGL:
                 'Cannot directly query a JupyterGL method within '
                 'an active context')
         self._send_instructions([Instruction(name, args)], 'query')
-        return self._comm.await_query_reply(timeout=self._query_timeout)
+        return self._comm.future_query_reply()
 
     def __getattr__(self, name):
         if self._constants and name in self._constants:
@@ -120,6 +122,9 @@ class JupyterGL:
                 return getattr(self._context, name)
         else:
             raise AttributeError(name)
+
+    def _get_futures(self, instructions):
+        return [a for i in instructions for a in i.args if isinstance(a, Future)]
 
     def _separate_buffers(self, instructions):
         buffers = []
@@ -135,6 +140,8 @@ class JupyterGL:
                 elif isinstance(a, (memoryview, bytes, bytearray)):
                     processed_args.append('buffer%s' % a.dtype)
                     buffers.append(a)
+                elif isinstance(a, Future):
+                    processed_args.append(a.result())
                 else:
                     raise TypeError(
                         'Invalid argument to method %s: %r', i.name, a)
@@ -152,12 +159,19 @@ class JupyterGL:
     def _send_instructions(self, instructions, mode):
         if not instructions:
             return
-        instructions, buffers = self._separate_buffers(instructions)
-        msg = dict(
-            type=mode,
-            instructions=instructions
-        )
-        self._send(msg, buffers)
+        async def send_resolved(preconditions):
+            nonlocal instructions
+            await preconditions
+            instructions, buffers = self._separate_buffers(instructions)
+            msg = dict(
+                type=mode,
+                instructions=instructions
+            )
+            self._send(msg, buffers)
+
+        futures = self._get_futures(instructions)
+        preconditions = gather(self._prev, *futures)
+        self._prev = ensure_future(send_resolved(preconditions))
 
     def _send(self, msg, buffers=None):
         """Sends a message to the model in the front-end."""
