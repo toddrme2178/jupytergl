@@ -94,8 +94,10 @@ class JupyterGL:
             self._context = RemoteContext(self._constants, self._methods)
         yield self
         if outermost:
-            self._send_instructions(self._context, 'exec')
-            self._context = None
+            try:
+                self._send_instructions(self._context, 'exec')
+            finally:
+                self._context = None
 
     def exec_(self, name, args):
         if self.context is None:
@@ -144,7 +146,7 @@ class JupyterGL:
                     processed_args.append(a.result())
                 else:
                     raise TypeError(
-                        'Invalid argument to method %s: %r', i.name, a)
+                        'Invalid argument to method %s: %r' % (i.name, a))
             processed_instructions.append(Instruction(i.name, processed_args)._serialize())
         return processed_instructions, buffers
 
