@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from asyncio import Future, gather, ensure_future
+from asyncio import Future, ensure_future, get_event_loop
 
 import numpy as np
 
@@ -27,7 +27,8 @@ class Instruction:
         return dict(op=self.name, args=self.args)
 
 
-class RemoteContext:
+class ChunkContext:
+    """A context that accumulates instructions for later execution"""
     def __init__(self, constants, methods):
         self._constants = constants
         self._methods = methods
@@ -52,16 +53,19 @@ class RemoteContext:
 
 
 class JupyterGL:
-    def __init__(self, query_timeout=10):
+
+    _cmd_id = 0
+
+    def __init__(self):
         self._context = None
         self._comm = None
         self._open()
-        self._constants = None
-        self._methods = None
+        self._constants = {}
+        self._methods = []
         self._request_constants()
         self._request_methods()
-        self._prev = Future()
-        self._prev.set_result(None)
+        self._prev_sent = get_event_loop().create_future()
+        self._prev_sent.set_result(None)
 
     def __del__(self):
         self._close()
@@ -69,7 +73,7 @@ class JupyterGL:
     def __dir__(self):
         d = list(self.__dict__.keys())
         if self._constants:
-            d.extend(self._constants)
+            d.extend(self._constants.keys())
         if self._methods:
             d.extend(self._methods)
         return d
@@ -91,13 +95,16 @@ class JupyterGL:
     def chunk(self):
         outermost = self._context is None
         if outermost:
-            self._context = RemoteContext(self._constants, self._methods)
+            self._context = ChunkContext(self._constants, self._methods)
         yield self
         if outermost:
             try:
                 self._send_instructions(self._context, 'exec')
             finally:
                 self._context = None
+
+    def branch(self):
+        return BranchContext(self)
 
     def exec_(self, name, args):
         if self.context is None:
@@ -110,8 +117,8 @@ class JupyterGL:
             raise RuntimeError(
                 'Cannot directly query a JupyterGL method within '
                 'an active context')
-        self._send_instructions([Instruction(name, args)], 'query')
-        return self._comm.future_query_reply()
+        cmd_id = self._send_instructions([Instruction(name, args)], 'query')
+        return self._comm.future_query_reply(cmd_id)
 
     def __getattr__(self, name):
         if self._constants and name in self._constants:
@@ -128,7 +135,7 @@ class JupyterGL:
     def _get_futures(self, instructions):
         return [a for i in instructions for a in i.args if isinstance(a, Future)]
 
-    def _separate_buffers(self, instructions):
+    async def _separate_buffers(self, instructions):
         buffers = []
         processed_instructions = []
         for i in instructions:
@@ -143,7 +150,7 @@ class JupyterGL:
                     processed_args.append('buffer%s' % a.dtype)
                     buffers.append(a)
                 elif isinstance(a, Future):
-                    processed_args.append(a.result())
+                    processed_args.append(await a)
                 else:
                     raise TypeError(
                         'Invalid argument to method %s: %r' % (i.name, a))
@@ -161,24 +168,26 @@ class JupyterGL:
     def _send_instructions(self, instructions, mode):
         if not instructions:
             return
-        async def send_resolved(preconditions):
+        async def send_resolved():
             nonlocal instructions
-            await preconditions
-            instructions, buffers = self._separate_buffers(instructions)
+            instructions, buffers = await self._separate_buffers(instructions)
             msg = dict(
                 type=mode,
-                instructions=instructions
+                instructions=instructions,
             )
-            self._send(msg, buffers)
+            await prev_sent
+            self._send(msg, metadata, buffers)
 
-        futures = self._get_futures(instructions)
-        preconditions = gather(self._prev, *futures)
-        self._prev = ensure_future(send_resolved(preconditions))
+        JupyterGL._cmd_id += 1
+        metadata = dict(cmd_id=JupyterGL._cmd_id)
+        prev_sent = self._prev_sent  # Put into closure
+        self._prev_sent = ensure_future(send_resolved())
+        return metadata['cmd_id']
 
-    def _send(self, msg, buffers=None):
+    def _send(self, msg, metadata=None, buffers=None):
         """Sends a message to the model in the front-end."""
         if self._comm is not None and self._comm.kernel is not None:
-            self._comm.send(data=msg, buffers=buffers)
+            self._comm.send(data=msg, metadata=metadata, buffers=buffers)
 
     def _handle_msg(self, message):
         """Called when a msg is received from the front-end"""
@@ -186,11 +195,33 @@ class JupyterGL:
         if 'type' not in msg:
             raise ValueError('Invalid message received: %s', message)
         if msg['type'] == 'constantsReply':
-            self._constants = msg['data']
+            # TODO: Sanitize constants?
+            self._constants.clear()
+            self._constants.update(msg['data'])
         elif msg['type'] == 'methodsReply':
-            self._methods = msg['data']
+            # TODO: Sanitize methods?
+            self._methods[:] = msg['data']
         elif msg['type'] == 'queryReply':
             # This should have been handled in QueryableComm!
             raise ValueError(msg)
         else:
             raise ValueError('Invalid message received: %s', message)
+
+
+class BranchContext(JupyterGL):
+    """A context that is not part of the normal, serial execution.
+
+    This needs to be used for all coroutines to avoid circular
+    dependenices of futures.
+    """
+
+    def __init__(self, gl):
+        self._context = None
+        self._comm = gl._comm
+        self._constants = gl._constants
+        self._methods = gl._methods
+        self._prev_sent = gl._prev_sent
+        self._gl = gl
+
+    def __del__(self):
+        pass  # Do not close comms!

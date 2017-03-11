@@ -4,6 +4,8 @@ Utility WebGL functions, translated from Mozilla Developer Network.
 Orignial code covered by Mozilla Public License, version 2.0.
 """
 
+import asyncio
+
 import numpy as np
 
 
@@ -22,34 +24,55 @@ def translate(matrix, v):
     matrix[3, :3] += v
 
 
+async def _ensure_shader(gl, shader):
+    """Ensure that the shader compile status is OK.
+
+    Note: This function is a coroutine, and therefore needs
+    to be called with a branched GL context
+    """
+    status = gl.getShaderParameter(shader, gl.COMPILE_STATUS)
+    if not await status:
+        log = gl.getShaderInfoLog(shader)
+        gl.deleteShader(shader)
+        raise RuntimeError(
+            'An error occurred compiling the shaders: %s' % await log)
+    return await shader
+
+
 def make_shader(gl, source, type):
     shader = gl.createShader(type)
     with gl.chunk():
         gl.shaderSource(shader, source)
         gl.compileShader(shader)
-    status = gl.getShaderParameter(shader, gl.COMPILE_STATUS)
-    if not status:
-        log = gl.getShaderInfoLog(shader)
-        gl.deleteShader(shader)
-        raise RuntimeError(
-            'An error occurred compiling the shaders: %s' % log)
-    return shader
+    return asyncio.ensure_future(_ensure_shader(gl.branch(), shader))
+
+
+async def _ensure_program(gl, program):
+    """Ensure that the shader program status is OK.
+
+    Note: This function is a coroutine, and therefore needs
+    to be called with a branched GL context
+    """
+    status = gl.getProgramParameter(program, gl.LINK_STATUS)
+    if not await status:
+        log = gl.getProgramInfoLog(program)
+        gl.deleteProgram(program)
+        raise ValueError(
+            'Unable to initialize the shader program: %s' % await log)
+    return await program
 
 
 def make_program(gl, vertex_shader_source, fragment_shader_source):
-    shaderProgram = gl.createProgram()
+    program = gl.createProgram()
     vertex_shader = make_shader(gl, vertex_shader_source, gl.VERTEX_SHADER)
     frag_shader = make_shader(gl, fragment_shader_source, gl.FRAGMENT_SHADER)
 
     with gl.chunk():
-        gl.attachShader(shaderProgram, vertex_shader)
-        gl.attachShader(shaderProgram, frag_shader)
-        gl.linkProgram(shaderProgram)
-    status = gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)
-    if not status:
-        raise ValueError('Unable to initialize the shader program: %s',
-                         gl.getProgramInfoLog(shaderProgram))
-    return shaderProgram
+        gl.attachShader(program, vertex_shader)
+        gl.attachShader(program, frag_shader)
+        gl.linkProgram(program)
+
+    return asyncio.ensure_future(_ensure_program(gl.branch(), program))
 
 
 # gluLookAt

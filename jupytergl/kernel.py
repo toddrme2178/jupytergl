@@ -14,18 +14,12 @@ class ZMQPolicy(p.__class__):
         self._created_once = False
         super(ZMQPolicy, self).__init__()
 
-    def get_event_loop(self):
-        return super(ZMQPolicy, self).get_event_loop()
-
     def new_event_loop(self):
         if self._created_once:
             return super(ZMQPolicy, self).new_event_loop()
         else:
             self._created_once = True
             return zmq.asyncio.ZMQEventLoop()
-
-    def set_event_loop(self, loop):
-        super(ZMQPolicy, self).set_event_loop(loop)
 
 
 def install_loop():

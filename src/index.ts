@@ -135,7 +135,7 @@ class Context {
             throw e;
           }
         }
-        comm.send(reply)
+        comm.send(reply, message.metadata)
       });
     } else if (data.type === 'getConstants' || data.type === 'getMethods') {
       if (data.target === 'context') {
@@ -155,7 +155,7 @@ class Context {
             data: methods
           } as IMethodsReply;
         }
-        comm.send(reply)
+        comm.send(reply, message.metadata)
       }
     }
   }
