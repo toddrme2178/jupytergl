@@ -240,3 +240,38 @@ class Context {
 
   private _context: WebGLRenderingContext | null = null;
 }
+
+
+export
+class DebugContex extends Context {
+
+  handleMessage(comm: Kernel.IComm, message: KernelMessage.ICommMsgMsg): void {
+    let data = message.content.data as IMessage;
+    if (data.type !== 'exec' && data.type !== 'query') {
+      console.log(data.type);
+    }
+    return super.handleMessage(comm, message);
+  }
+
+  /**
+   * Execute an instruction, discarding any return value.
+   *
+   * Throws an error if instruction is missing.
+   */
+  protected execInstruction(gl: WebGLRenderingContext, instruction: IInstruction): void {
+    console.log('exec ' + instruction.op);
+    return super.execInstruction(gl, instruction);
+  }
+
+
+  /**
+   * Process an instruction, returning its return value.
+   *
+   * Throws an error if instruction is missing.
+   */
+  protected queryInstruction(gl: WebGLRenderingContext, instruction: IInstruction): JSONValue {
+    console.log('query ' + instruction.op);
+    return super.queryInstruction(gl, instruction);
+  }
+}
+
