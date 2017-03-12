@@ -24,35 +24,44 @@ def translate(matrix, v):
     matrix[3, :3] += v
 
 
-async def _ensure_shader(gl, shader):
+async def _ensure_shader(gl, source, type):
     """Ensure that the shader compile status is OK.
 
     Note: This function is a coroutine, and therefore needs
     to be called with a branched GL context
     """
+    shader = gl.createShader(type)
+    with gl.chunk():
+        gl.shaderSource(shader, source)
+        gl.compileShader(shader)
     status = gl.getShaderParameter(shader, gl.COMPILE_STATUS)
     if not await status:
         log = gl.getShaderInfoLog(shader)
         gl.deleteShader(shader)
         raise RuntimeError(
             'An error occurred compiling the shaders: %s' % await log)
-    return await shader
+    return shader
 
 
 def make_shader(gl, source, type):
-    shader = gl.createShader(type)
-    with gl.chunk():
-        gl.shaderSource(shader, source)
-        gl.compileShader(shader)
-    return asyncio.ensure_future(_ensure_shader(gl.branch(), shader))
+    return asyncio.ensure_future(_ensure_shader(gl.branch(), source, type))
 
 
-async def _ensure_program(gl, program):
+async def _ensure_program(gl, vertex_shader_source, fragment_shader_source):
     """Ensure that the shader program status is OK.
 
     Note: This function is a coroutine, and therefore needs
     to be called with a branched GL context
     """
+    program = gl.createProgram()
+    vertex_shader = await _ensure_shader(gl, vertex_shader_source, gl.VERTEX_SHADER)
+    frag_shader = await _ensure_shader(gl, fragment_shader_source, gl.FRAGMENT_SHADER)
+
+    with gl.chunk():
+        gl.attachShader(program, vertex_shader)
+        gl.attachShader(program, frag_shader)
+        gl.linkProgram(program)
+
     status = gl.getProgramParameter(program, gl.LINK_STATUS)
     if not await status:
         log = gl.getProgramInfoLog(program)
@@ -63,16 +72,10 @@ async def _ensure_program(gl, program):
 
 
 def make_program(gl, vertex_shader_source, fragment_shader_source):
-    program = gl.createProgram()
-    vertex_shader = make_shader(gl, vertex_shader_source, gl.VERTEX_SHADER)
-    frag_shader = make_shader(gl, fragment_shader_source, gl.FRAGMENT_SHADER)
-
-    with gl.chunk():
-        gl.attachShader(program, vertex_shader)
-        gl.attachShader(program, frag_shader)
-        gl.linkProgram(program)
-
-    return asyncio.ensure_future(_ensure_program(gl.branch(), program))
+    f = asyncio.ensure_future(_ensure_program(
+        gl.branch(), vertex_shader_source, fragment_shader_source))
+    f._debug_repr_str = 'make_program'
+    return f
 
 
 # gluLookAt
