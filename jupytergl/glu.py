@@ -5,6 +5,7 @@ Orignial code covered by Mozilla Public License, version 2.0.
 """
 
 import asyncio
+import traceback
 
 import numpy as np
 
@@ -138,3 +139,30 @@ def make_ortho(left, right, bottom, top, znear, zfar):
         [0, 2 / (top - bottom), 0, ty],
         [0, 0, -2 / (zfar - znear), tz],
         [0, 0, 0, 1]], dtype=np.float32).T
+
+
+def task_status():
+    print("Status:")
+    for task in asyncio.Task.all_tasks(asyncio.get_event_loop()):
+        print('- %s\n' % _format_task(task).rstrip('\n'))
+
+
+def _format_task(task):
+    status = 'pending'
+    if task.done():
+        if task.cancelled():
+            status = 'cancelled'
+        elif task.exception() is not None:
+            e = task.exception()
+            return 'Task - error: %s' % (
+                "".join(traceback.format_exception(
+                    e.__class__,
+                    e,
+                    e.__traceback__
+                )))
+        else:
+            status = 'success'
+    if hasattr(task, '_coro'):
+        return 'Task - %s: %s' % (status, task._coro)
+    else:
+        return 'Task - %s' % status
