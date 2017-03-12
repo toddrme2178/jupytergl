@@ -93,6 +93,30 @@
         }
       }
     },
+    "command": {
+      "type": "object",
+      "properties": {
+        "type": {"enum": ["command"]},
+        "command": {
+          "type": "object",
+          "properties": {
+            "op": {
+              "enum": [
+                "orbitView"
+              ]
+            },
+            "args": {
+              "type": "array",
+              "items": {"$ref": "#/definitions/arg"}
+            },
+            "instructions": {
+              "$ref": "#/definitions/chunk"
+            }
+          }
+        }
+      }
+    },
+
 
     "chunk": {
       "type": "array",
@@ -139,7 +163,6 @@
     },
 
     "arg": {
-      "type": ["string", "number", "array", "null", "object"],
       "description": "Argument for an instruction. The values \"keyX\" and \"bufferY\", have special meanings. `keyX` is a reference to a variable key returned by a previous query (e.g. buffer reference) with X being an ID of one or more characters. \"bufferY\" means to get the variable value from a binary buffer, where Y is the data type (e.g. uint8) of the binary data. Buffers are consumed in the order they are referenced, so clients should ensure that the number of buffer args equals exactly the number of buffers."
     }
   }

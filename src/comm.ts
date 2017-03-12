@@ -108,11 +108,24 @@ interface IQueryError extends JSONObject {
 }
 
 export
+interface ICommand extends JSONObject {
+  op: 'orbitView';
+  args: JSONValue[];
+  instructions: IInstruction[];
+}
+
+export
+interface ICommandMessage extends JSONObject {
+  type: 'command';
+  command: ICommand;
+}
+
+export
 type IInspectReply = IConstantsReply | IMethodsReply;
 
 export
 type IReply = IInspectReply;
 
 export
-type IMessage = IInstructionMessage | IInspectMessage;
+type IMessage = IInstructionMessage | IInspectMessage | ICommandMessage;
 

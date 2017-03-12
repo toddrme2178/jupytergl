@@ -9,8 +9,13 @@ import {
 } from './json';
 
 import {
-  IMessage, IReply, IConstantsReply, IMethodsReply, IQueryReply, IQueryError
+  IMessage, IReply, IConstantsReply, IMethodsReply, IQueryReply, IQueryError,
+  ICommand
 } from './comm';
+
+import {
+  threeOrbit
+} from './views';
 
 
 // Re-export:
@@ -157,6 +162,17 @@ class Context {
         }
         comm.send(reply, message.metadata)
       }
+    } else if (data.type === 'command') {
+      this.handleCommand(data.command)
+    }
+  }
+
+
+  handleCommand(data: ICommand) {
+    if (data.op === 'orbitView') {
+      threeOrbit(this, data.args, () => {
+        this.execMessage(this.context, data.instructions);
+      });
     }
   }
 
@@ -244,6 +260,7 @@ class Context {
 
 export
 class DebugContex extends Context {
+
 
   handleMessage(comm: Kernel.IComm, message: KernelMessage.ICommMsgMsg): void {
     let data = message.content.data as IMessage;

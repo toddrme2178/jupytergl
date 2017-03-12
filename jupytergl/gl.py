@@ -120,6 +120,32 @@ class JupyterGL:
         cmd_id = self._send_instructions([Instruction(name, args)], 'query')
         return self._comm.future_query_reply(cmd_id)
 
+    @contextmanager
+    def orbitView(self, fov=None, near=None, far=None):
+        if self._context is not None:
+            raise ValueError('Cannot call orbit view from chunk!')
+        self._context = ChunkContext(self._constants, self._methods)
+        yield self
+
+        instructions = list(self._context)
+        self._context = None
+
+        async def send_command():
+            nonlocal instructions
+            instructions, buffers = await self._separate_buffers(instructions)
+            command = dict(
+                type='command',
+                command=dict(
+                    op='orbitView',
+                    args=[fov, near, far],
+                    instructions=instructions,
+                )
+            )
+            await prev_sent
+            self._send(command, None, buffers)
+        prev_sent = self._prev_sent  # Put into closure
+        self._prev_sent = ensure_future(send_command())
+
     def __getattr__(self, name):
         if self._constants and name in self._constants:
             return self._constants[name]
