@@ -96,12 +96,12 @@ class JupyterGL:
         outermost = self._context is None
         if outermost:
             self._context = ChunkContext(self._constants, self._methods)
-        yield self
-        if outermost:
-            try:
+        try:
+            yield self
+            if outermost:
                 self._send_instructions(self._context, 'exec')
-            finally:
-                self._context = None
+        finally:
+            self._context = None
 
     def branch(self):
         return BranchContext(self)
@@ -125,10 +125,11 @@ class JupyterGL:
         if self._context is not None:
             raise ValueError('Cannot call orbit view from chunk!')
         self._context = ChunkContext(self._constants, self._methods)
-        yield self
-
-        instructions = list(self._context)
-        self._context = None
+        try:
+            yield self
+            instructions = list(self._context)
+        finally:
+            self._context = None
 
         async def send_command():
             nonlocal instructions
