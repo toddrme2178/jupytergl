@@ -8,13 +8,11 @@ import asyncio
 import traceback
 
 import numpy as np
+from numpy.core.umath_tests import inner1d
 
 
-def normalize(v):
-    norm = np.linalg.norm(v)
-    if norm == 0:
-        return v
-    return v/norm
+def normalize(v, axis=None):
+    return v / np.linalg.norm(v, axis=axis)
 
 
 def load_identity():
@@ -77,6 +75,16 @@ def make_program(gl, vertex_shader_source, fragment_shader_source):
         gl.branch(), vertex_shader_source, fragment_shader_source))
     f._debug_repr_str = 'make_program'
     return f
+
+
+def make_texture(gl, texture_data, gl_type):
+    texture = gl.createTexture()
+    gl.bindTexture(gl.TEXTURE_2D, texture)
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl_type, texture_data)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+    gl.bindTexture(gl.TEXTURE_2D, None)
+    return texture
 
 
 # gluLookAt
@@ -166,3 +174,52 @@ def _format_task(task):
         return 'Task - %s: %s' % (status, task._coro)
     else:
         return 'Task - %s' % status
+
+
+def calulate_tangents(vertices, normals, tex_coords, faces):
+    """Calculate the tangents for a set of faces"""
+    vertex_count = vertices.shape[0]
+    tangents = np.zeros((vertex_count, 3))
+
+    i1 = faces[:, 0]
+    i2 = faces[:, 1]
+    i3 = faces[:, 2]
+
+    v1 = vertices[i1]
+    v2 = vertices[i2]
+    v3 = vertices[i3]
+
+    w1 = tex_coords[i1]
+    w2 = tex_coords[i2]
+    w3 = tex_coords[i3]
+
+    dv1 = v2 - v1
+    dv2 = v3 - v2
+
+    dw1 = w2 - w1
+    dw2 = w3 - w2
+
+    dw1u = dw1[:, 0]
+    dw1v = dw1[:, 1]
+    dw2u = dw2[:, 0]
+    dw2v = dw2[:, 1]
+
+    r = 1.0 / (dw1u * dw2v - dw1v * dw2u)
+    sdir = ((dw2v * dv1.T - dw1v * dv2.T) * r).T
+
+    tangents[i1] += sdir
+    tangents[i2] += sdir
+    tangents[i3] += sdir
+
+     # Gram-Schmidt orthogonalize
+    tangents[:] = normalize(tangents - (normals.T * inner1d(normals, tangents)).T)
+
+    return tangents
+
+
+def bump_map_to_normal_map(bump_map):
+    gradient = np.gradient(bump_map.astype(np.float) / 255.)
+    z = np.sqrt(1.0 - np.dot(gradient[0] ** 2, gradient[1] ** 2))
+    gradient = np.array(gradient + [z])
+    gradient = (127 * (1.0 + gradient)).astype(np.uint8)
+    return np.rollaxis(gradient, 0, 3)
