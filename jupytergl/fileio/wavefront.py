@@ -35,16 +35,27 @@
 import os
 from functools import partial
 
+from collections import namedtuple
+
+import numpy as np
+
+InterleavedIndices = namedtuple(
+    'InterleavedIndices', ('v', 'n', 't'))
+
+Face = namedtuple(
+    'Face', ('vertex_indices', 'normal_indices', 'tex_coord_indices'))
+
 
 def load_obj(filename):
-    return Wavefront(filename)
+    internal = Wavefront(filename)
+    return [create_mesh(internal, mesh) for mesh in internal.mesh_list]
 
 
 class PywavefrontException(Exception):
     pass
 
 
-class Parser(object):
+class Parser:
     """This defines a generalized parse dispatcher; all parse functions
     reside in subclasses."""
 
@@ -76,7 +87,7 @@ class Parser(object):
         parse_function(args)
 
 
-class Wavefront(object):
+class Wavefront:
     """Import a wavefront .obj file."""
     def __init__(self, file_name):
         self.file_name = file_name
@@ -84,6 +95,7 @@ class Wavefront(object):
         self.vertices = [[0., 0., 0.]]
         self.normals = [[0., 0., 0.]]
         self.tex_coords = [[0., 0.]]
+        self.colors = [(0, 0, 0)]
         self.materials = {}
         self.meshes = {}        # Name mapping
         self.mesh_list = []     # Also includes anonymous meshes
@@ -105,6 +117,9 @@ class ObjParser(Parser):
         self.wavefront = wavefront
         self.mesh = None
         self.material = None
+        # Use to duplicate vertices with uncommon normal_index/texture index
+        self.index_lut = None
+
         self.read_file(file_name)
 
     # methods for parsing types of wavefront lines
@@ -136,7 +151,7 @@ class ObjParser(Parser):
 
     def parse_o(self, args):
         [o] = args
-        self.mesh = Mesh(o)
+        self.mesh = InternalMesh(o)
         self.wavefront.add_mesh(self.mesh)
 
     def parse_g(self, args):
@@ -144,12 +159,19 @@ class ObjParser(Parser):
 
     def parse_f(self, args):
         if self.mesh is None:
-            self.mesh = Mesh()
+            self.mesh = InternalMesh()
             self.wavefront.add_mesh(self.mesh)
         if self.material is None:
             self.material = Material()
         self.mesh.add_material(self.material)
 
+        if self.index_lut is None and (self.wavefront.normals or self.wavefront.tex_coords):
+            # Need to assure each index triplet is unique
+            self.index_lut = {i: {} for i in range(len(self.wavefront.vertices))}
+
+        # For fan triangulation, remember first and latest vertices
+        first_indices = None
+        previous_indices = None
         for i, v in enumerate(args[0:]):
             if type(v) is bytes:
                 v = v.decode()
@@ -162,9 +184,18 @@ class ObjParser(Parser):
             if n_index < 0:
                 n_index += len(self.wavefront.normals) - 1
 
-            self.mesh.vertex_indices.append(v_index)
-            self.mesh.texcoord_indices.append(t_index)
-            self.mesh.normal_indices.append(n_index)
+            indices = InterleavedIndices(v_index, n_index, t_index)
+
+            if i >= 2:
+                # Triangulate
+                self.mesh.faces.append(Face(
+                    (first_indices.v, previous_indices.v, indices.v),
+                    (first_indices.n, previous_indices.n, indices.n),
+                    (first_indices.t, previous_indices.t, indices.t),
+                ))
+            elif i == 0:
+                first_indices = indices
+            previous_indices = indices
 
     def parse_s(self, args):
         # unimplemented
@@ -222,7 +253,7 @@ class MaterialParser(Parser):
         return
 
 
-class Material(object):
+class Material:
     def __init__(self, name):
         self.name = name
         self.diffuse = [.8, .8, .8, 1.]
@@ -231,6 +262,13 @@ class Material(object):
         self.emissive = [0., 0., 0., 1.]
         self.shininess = 0.
         self.textures = {}
+
+    @property
+    def normals(self):
+        if self._normals:
+            return self._normals
+        # TODO: Compute from geometry
+        return self._normals
 
     def pad_light(self, values):
         """Accept an array of up to 4 values, and return an array of 4 values.
@@ -264,15 +302,13 @@ class Material(object):
         self.textures[kind] = Texture(path)
 
 
-class Mesh(object):
+class InternalMesh:
     """This is a basic mesh for drawing using OpenGL."""
 
     def __init__(self, name=''):
         self.name = name
         self.materials = []
-        self.vertex_indices = []
-        self.texcoord_indices = []
-        self.normal_indices = []
+        self.faces = []
 
     def has_material(self, new_material):
         """Determine whether we already have a material of this name."""
@@ -288,8 +324,55 @@ class Mesh(object):
         self.materials.append(material)
 
 
-class Texture(object):
+class Texture:
     def __init__(self, path):
-        import pygame
+        from PIL import Image
         self.image_name = path
-        self.image = pygame.image.load(self.image_name).get_view()
+        self.image = np.array(Image.open(self.image_name), dtype=np.uint8)
+
+
+class Mesh:
+    def __init__(self, name, n_faces, materials):
+        self.name = name
+        self.vertices = []
+        self.normals = []
+        self.texture_coords = []
+
+        unknown_id = 0
+        self.materials = {}
+        for m in materials:
+            name = m.name
+            if not name:
+                name = 'unknown_material_%s' % unknown_id
+                unknown_id += 1
+            self.materials[name] = m
+
+        self.faces = np.empty((n_faces, 3), np.uint16)
+
+
+def create_mesh(model, source_mesh):
+    mesh = Mesh(source_mesh.name, len(source_mesh.faces), source_mesh.materials)
+
+    # Copy vertices, normals and textures into Mesh instance
+    indices_seen = {}
+    for face_out_index, source_face in enumerate(source_mesh.faces):
+        # Copy all index arrays
+        for i, composit_index in enumerate(zip(source_face.vertex_indices,
+                                               source_face.normal_indices,
+                                               source_face.tex_coord_indices)):
+            try:
+                new_index = indices_seen[composit_index]
+            except KeyError:
+                new_index = len(mesh.vertices)
+                indices_seen[composit_index] = new_index
+                (vi, ni, ti) = composit_index
+                mesh.vertices.append(model.vertices[vi])
+                mesh.normals.append(model.normals[ni])
+                mesh.texture_coords.append(model.tex_coords[ti])
+
+            # Set destination face indices:
+            mesh.faces[face_out_index, i] = new_index
+    mesh.vertices = np.array(mesh.vertices, np.float32)
+    mesh.normals = np.array(mesh.normals, np.float32) if mesh.normals else None
+    mesh.texture_coords = np.array(mesh.texture_coords, np.float32) if mesh.texture_coords else None
+    return mesh
