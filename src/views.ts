@@ -12,14 +12,16 @@ import { OrbitControls } from 'three-orbitcontrols-ts';
 
 
 export
-function threeOrbit(context: Context, args: JSONValue[], renderCallback?: () => void): void {
+function threeOrbit(context: Context, args: JSONValue[], renderCallback?: () => void): ThreeOrbitView {
   let fov = args[0] as number || 60;
   let near = args[1] as number || 1;
   let far = args[2] as number || 1000;
   let view = new ThreeOrbitView(context, fov, near, far, renderCallback);
+  return view;
 }
 
 
+export
 class ThreeOrbitView {
   constructor(context: Context, fov: number, near: number, far: number, renderCallback?: () => void) {
     this.context = context;
@@ -76,6 +78,11 @@ class ThreeOrbitView {
     if (this.renderCallback !== undefined) {
       this.renderCallback();
     }
+  }
+
+  remove() {
+    this.control.removeEventListener('change', this.render);
+    this.control.dispose();
   }
 
   protected context: Context;

@@ -14,7 +14,7 @@ import {
 } from './comm';
 
 import {
-  threeOrbit
+  threeOrbit, ThreeOrbitView
 } from './views';
 
 
@@ -170,7 +170,10 @@ class Context {
 
   handleCommand(data: ICommand) {
     if (data.op === 'orbitView') {
-      threeOrbit(this, data.args, () => {
+      if (this._view) {
+        this._view.remove();
+      }
+      this._view = threeOrbit(this, data.args, () => {
         this.execMessage(this.context, data.instructions);
       });
     }
@@ -255,6 +258,8 @@ class Context {
   private _currentBuffers: Buffer[] | null = null;
 
   private _context: WebGLRenderingContext | null = null;
+
+  private _view: ThreeOrbitView | null = null;
 }
 
 
