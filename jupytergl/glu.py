@@ -237,3 +237,17 @@ def bump_map_to_normal_map(bump_map):
     gradient = np.array(gradient + [z])
     gradient = (127 * (1.0 + gradient)).astype(np.uint8)
     return np.rollaxis(gradient, 0, 3)
+
+
+def check_error(gl):
+    code_future = gl.getError()
+    async def check():
+        # Doesn't need a context branch as it only uses constants
+        code = await code_future
+        if code == gl.NO_ERROR:
+            return None
+        # Need to raise error! Look up error code as constant name:
+        enum_name = list(gl._constants.keys())[
+            list(gl._constants.values()).index(code)]
+        raise RuntimeError('WebGL Error: gl.%s' % enum_name)
+    return asyncio.ensure_future(check())
