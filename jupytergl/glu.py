@@ -71,20 +71,34 @@ async def _ensure_program(gl, vertex_shader_source, fragment_shader_source):
 
 
 def make_program(gl, vertex_shader_source, fragment_shader_source):
-    f = asyncio.ensure_future(_ensure_program(
+    return asyncio.ensure_future(_ensure_program(
         gl.branch(), vertex_shader_source, fragment_shader_source))
-    f._debug_repr_str = 'make_program'
-    return f
 
 
-def make_texture(gl, texture_data, gl_type):
+async def _upload_texture(gl, texture_data, gl_type, debug):
     texture = gl.createTexture()
+    w, h, ch = texture_data.shape
     gl.bindTexture(gl.TEXTURE_2D, texture)
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl_type, texture_data)
+    if ch == 4:
+        await gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA,
+                            gl_type, texture_data.flatten())
+    else:
+        await gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, w, h, 0, gl.RGB,
+                            gl_type, texture_data.flatten())
+    if debug:
+        await check_error(gl)
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-    gl.bindTexture(gl.TEXTURE_2D, None)
-    return texture
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+    await gl.bindTexture(gl.TEXTURE_2D, None)
+    return await texture
+
+
+def make_texture(gl, texture_data, gl_type, debug=False):
+    texture_data = np.ascontiguousarray(texture_data)
+    return asyncio.ensure_future(_upload_texture(
+        gl.branch(), texture_data, gl_type, debug))
 
 
 # gluLookAt
